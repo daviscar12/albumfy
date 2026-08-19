@@ -1,0 +1,7 @@
+{
+  "name": "albumfy",
+  "integrations": {
+    "capacitor": {}
+  },
+  "type": "vue-vite"
+}
