@@ -12,6 +12,10 @@ Desenvolvimento Mobile com Ionic / Aplicações Móveis
 ## Explicação do projeto
 O Albumfy é um aplicativo móvel desenvolvido em Ionic + Vue para gerenciar uma galeria de fotos de forma moderna, prática e visualmente elegante. O sistema conta com autenticação simples, cadastro de usuários, área protegida após login, galeria de fotos, opção de adicionar imagens pela câmera ou pela biblioteca do dispositivo e remoção individual de fotos.
 
+## Adição ao aplicativo
+
+Foram feitas mudanças como: botão de compartilhamento em apps nativos, botão para mudança do tema dark, aviso se tiver conectado a internet ou não.
+
 A ideia do projeto é oferecer uma experiência semelhante a uma aplicação de organização visual, com interface premium e design atual, mantendo o funcionamento simples e funcional para uso acadêmico.
 
 ## Como rodar

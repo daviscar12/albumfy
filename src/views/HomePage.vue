@@ -5,6 +5,9 @@
         <ion-title>Galeria</ion-title>
         <ion-buttons slot="end">
           <ion-button fill="clear" @click="goToAbout">Sobre</ion-button>
+          <ion-button fill="clear" @click="toggleTheme">
+            <ion-icon :icon="isDark ? sunnyOutline : moonOutline" slot="icon-only" />
+          </ion-button>
           <ion-button fill="clear" @click="handleLogout">
             <ion-icon :icon="logOutOutline" slot="icon-only" />
           </ion-button>
@@ -13,6 +16,7 @@
     </ion-header>
 
     <ion-content class="home-page">
+      <div v-if="!online" class="offline-banner">Sem conexão com a internet</div>
       <div class="content-shell">
         <section class="hero-card">
           <div>
@@ -53,6 +57,7 @@
           <article v-for="photo in photos" :key="photo.id" class="photo-card">
             <img :src="photo.src" :alt="`Foto ${photo.id}`" />
             <button type="button" class="remove-btn" @click="removePhoto(photo.id)">Remover</button>
+            <button type="button" class="share-btn" @click="sharePhoto(photo)">Compartilhar</button>
           </article>
         </div>
       </div>
@@ -64,18 +69,19 @@
         style="display: none"
         @change="onFileSelected"
       />
-
       <ion-fab vertical="bottom" horizontal="end" slot="fixed">
         <ion-fab-button @click="openSourcePicker">
           <ion-icon :icon="cameraOutline" />
         </ion-fab-button>
       </ion-fab>
+
+      
     </ion-content>
   </ion-page>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, onUnmounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import {
   IonPage,
@@ -92,14 +98,42 @@ import {
   IonFabButton,
   actionSheetController,
 } from '@ionic/vue';
-import { cameraOutline, logOutOutline } from 'ionicons/icons';
+import { cameraOutline, logOutOutline, moonOutline, sunnyOutline } from 'ionicons/icons';
 import { authService } from '@/services/auth';
 import { galleryService } from '@/services/gallery';
+import { Share } from '@capacitor/share';
+import { Haptics, ImpactStyle } from '@capacitor/haptics';
+import { Network } from '@capacitor/network';
 
 const router = useRouter();
 const fileInput = ref<HTMLInputElement | null>(null);
 const photos = ref(galleryService.getPhotos());
+const online = ref(true);
 const currentUser = computed(() => authService.getCurrentUser());
+const isDark = ref(false);
+
+const applyTheme = (dark: boolean) => {
+  try {
+    document.documentElement.classList.toggle('dark', dark);
+  } catch (e) {
+    // ignore
+  }
+};
+
+const toggleTheme = async () => {
+  isDark.value = !isDark.value;
+  applyTheme(isDark.value);
+  try {
+    await Haptics.impact({ style: ImpactStyle.Medium });
+  } catch (e) {
+    // ignore
+  }
+  try {
+    localStorage.setItem('theme', isDark.value ? 'dark' : 'light');
+  } catch (e) {
+    // ignore
+  }
+};
 
 const getInitials = (name: string) => {
   return name
@@ -180,6 +214,36 @@ const removePhoto = (id: string) => {
   refreshPhotos();
 };
 
+const sharePhoto = async (photo: any) => {
+  try {
+    await Haptics.impact({ style: ImpactStyle.Medium });
+  } catch (e) {
+    // falha silenciosa em haptics
+  }
+
+  try {
+    await Share.share({
+      title: 'Minha foto',
+      text: 'Veja essa foto',
+      url: photo.src,
+      dialogTitle: 'Compartilhar foto',
+    });
+  } catch (err) {
+    console.error('Falha ao compartilhar via Capacitor Share:', err);
+    // Fallback para Web Share API
+    try {
+      if ((navigator as any).share) {
+        await (navigator as any).share({ title: 'Minha foto', text: 'Veja essa foto', url: photo.src });
+      } else if (navigator.clipboard) {
+        await navigator.clipboard.writeText(photo.src);
+        console.info('Link copiado para a área de transferência como fallback.');
+      }
+    } catch (e) {
+      console.error('Fallback de compartilhamento falhou:', e);
+    }
+  }
+};
+
 const goToAbout = () => {
   router.push('/about');
 };
@@ -189,7 +253,47 @@ const handleLogout = () => {
   router.push('/login');
 };
 
-onMounted(() => {
+onMounted(async () => {
+  // aplicar preferência de tema inicial
+  try {
+    const saved = localStorage.getItem('theme');
+    if (saved === 'dark') {
+      isDark.value = true;
+      applyTheme(true);
+    } else if (saved === 'light') {
+      isDark.value = false;
+      applyTheme(false);
+    } else if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+      isDark.value = true;
+      applyTheme(true);
+    }
+  } catch (e) {
+    // ignore
+  }
+
+  try {
+    const status = await Network.getStatus();
+    online.value = status.connected;
+
+    const handler = Network.addListener('networkStatusChange', (s) => {
+      online.value = s.connected;
+    });
+
+    onUnmounted(() => {
+      try {
+        Promise.resolve(handler).then((h: any) => {
+          if (h && typeof h.remove === 'function') {
+            h.remove();
+          }
+        });
+      } catch (e) {
+        // ignore
+      }
+    });
+  } catch (e) {
+    console.warn('Não foi possível obter status de rede:', e);
+  }
+
   if (!authService.isAuthenticated()) {
     router.replace('/login');
   } else {
@@ -332,6 +436,30 @@ h3 {
   font-size: 0.72rem;
   font-weight: 700;
   backdrop-filter: blur(12px);
+}
+
+.share-btn {
+  position: absolute;
+  left: 10px;
+  bottom: 10px;
+  border: none;
+  border-radius: 10px;
+  padding: 8px 10px;
+  background: rgba(59, 230, 199, 0.12);
+  color: #e6fffa;
+  font-size: 0.72rem;
+  font-weight: 700;
+  backdrop-filter: blur(6px);
+}
+
+.offline-banner {
+  margin: 12px 18px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: #ffefc2;
+  color: #4a2b00;
+  font-weight: 700;
+  text-align: center;
 }
 
 ion-fab-button {
